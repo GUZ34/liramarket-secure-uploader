@@ -1,0 +1,10 @@
+{
+  "name": "liramarket-secure-uploader",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.4.0",
+    "form-data": "^4.0.0",
+    "formidable": "^3.5.0"
+  }
+}
