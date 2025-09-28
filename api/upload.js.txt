@@ -1,0 +1,88 @@
+const { Readable } = require('stream');
+const formidable = require('formidable');
+const axios = require('axios');
+const FormData = require('form-data');
+
+// Lee las claves de API desde las variables de entorno del servidor
+const pinataApiKey = process.env.PINATA_API_KEY;
+const pinataApiSecret = process.env.PINATA_API_SECRET;
+
+// Configura formidable para manejar la subida de archivos
+export const config = {
+    api: {
+        bodyParser: false,
+    },
+};
+
+// Función principal que maneja la petición
+export default async function handler(req, res) {
+    // --- SOLUCIÓN: Añadir Cabeceras CORS ---
+    // Esto le dice al navegador que permita peticiones desde cualquier origen ('*')
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    // Si la petición es de tipo OPTIONS (una comprobación previa de CORS), responder inmediatamente
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    // --- FIN DE LA SOLUCIÓN ---
+
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method Not Allowed' });
+    }
+
+    try {
+        const file = await parseForm(req);
+
+        if (!file) {
+            return res.status(400).json({ error: 'No file was uploaded.' });
+        }
+
+        const formData = new FormData();
+        formData.append('file', file.buffer, file.name);
+
+        const pinataResponse = await axios.post(
+            "https://api.pinata.cloud/pinning/pinFileToIPFS",
+            formData,
+            {
+                headers: {
+                    ...formData.getHeaders(),
+                    'pinata_api_key': pinataApiKey,
+                    'pinata_secret_api_key': pinataApiSecret,
+                },
+            }
+        );
+
+        res.status(200).json({ IpfsHash: pinataResponse.data.IpfsHash });
+
+    } catch (e) {
+        console.error("Error in serverless function:", e);
+        res.status(500).json({ error: 'Internal Server Error', details: e.message });
+    }
+}
+
+// Función auxiliar para procesar el formulario
+function parseForm(req) {
+    return new Promise((resolve, reject) => {
+        const form = formidable({ 
+            maxFileSize: 100 * 1024 * 1024 // Límite de 100MB
+        });
+
+        form.parse(req, (err, fields, files) => {
+            if (err) return reject(err);
+            if (!files.file || files.file.length === 0) {
+                return resolve(null);
+            }
+            const uploadedFile = files.file[0];
+            const fs = require('fs');
+            const fileBuffer = fs.readFileSync(uploadedFile.filepath);
+            
+            resolve({
+                name: uploadedFile.originalFilename,
+                buffer: fileBuffer
+            });
+        });
+    });
+}
+
